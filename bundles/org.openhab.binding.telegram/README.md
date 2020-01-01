@@ -93,7 +93,8 @@ These actions will send a message to all chat ids configured for this bot.
 |----------------------------|--------------|
 | sendTelegram(String message) | Sends a message. |
 | sendTelegram(String format, Object... args)          | Sends a formatted message (See https://docs.oracle.com/javase/8/docs/api/java/util/Formatter.html for more information).
-| sendTelegramQuery(String message, String replyId, String... buttons) | Sends a question to the user that can be answered via the defined buttons. The replyId can be freely choosen and is sent back with the answer. Then, the id is required to identify what question has been answered (e.g. in case of multiple open questions). The final result looks like this: ![Telegram Inline Keyboard](doc/queryExample.png). |
+| sendTelegramQuery(String message, String replyId, String... buttons) | Sends a question to the user that can be answered via the defined buttons which are placed on a single line. The replyId can be freely choosen and is sent back with the answer. Then, the id is required to identify what question has been answered (e.g. in case of multiple open questions). The final result looks like this: <br>![Telegram Inline Keyboard](doc/queryExample.png). |
+| sendTelegramQuery(String message, String replyId, List&lt;List&lt;String&gt;&gt; buttons) | Sends a question to the user that can be answered via the defined buttons which are placed according to the specified 2D array list ( `buttons.get(row).get(column)]` should return the button for the specified position):<br>![Telegram Inline Keyboard 2D](doc/queryExampleMultiRows.png)  |
 | sendTelegramAnswer(String replyId, String message) | Sends a message after the user has answered a question. You should *always* call this method after you received an answer. It will remove buttons from the specific question and will also stop the progress bar displayed at the client side. If no message is necessary, just pass `null` here. |
 | sendTelegramPhoto(String photoURL, String caption) | Sends a picture. The URL can be specified using the http, https, and file protocols or a base64 encoded image. |
 | sendTelegramPhoto(String photoURL, String caption, String username, String password) | Sends a picture which is downloaded from a username/password protected http/https address. |
@@ -278,3 +279,16 @@ then
 end
 ```
 
+To send a question with multiple alternatives placed on multiple lines:
+
+```java
+rule "Send telegram with question and answers on multiple lines"
+when
+    Item Presence changed to ON
+then
+    val telegramAction = getActions("telegram","telegram:telegramBot:2b155b22")
+    var List<String> firstLine = newArrayList("Kitchen", "Study")
+    var List<String> secondLine = newArrayList("Living Room", "Bed Room", "Hallway")
+    var List<List<String>> allButtons = newArrayList(firstLine, secondLine)    
+    telegramAction.sendTelegramQuery("Where to turn the heating on?", "Reply_Heating", allButtons)
+end
