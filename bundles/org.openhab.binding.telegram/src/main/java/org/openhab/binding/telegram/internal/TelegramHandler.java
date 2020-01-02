@@ -24,6 +24,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
@@ -34,6 +35,7 @@ import org.eclipse.smarthome.core.library.types.StringType;
 import org.eclipse.smarthome.core.thing.ChannelUID;
 import org.eclipse.smarthome.core.thing.Thing;
 import org.eclipse.smarthome.core.thing.ThingStatus;
+import org.eclipse.smarthome.core.thing.ThingStatusDetail;
 import org.eclipse.smarthome.core.thing.binding.BaseThingHandler;
 import org.eclipse.smarthome.core.thing.binding.ThingHandlerService;
 import org.eclipse.smarthome.core.types.Command;
@@ -97,6 +99,7 @@ public class TelegramHandler extends BaseThingHandler {
 
     private final List<Long> chatIds = new ArrayList<Long>();
     private final Logger logger = LoggerFactory.getLogger(TelegramHandler.class);
+    private @Nullable ScheduledFuture<?> thingStatusUpdateJob;
 
     // Keep track of the callback id created by Telegram. This must be sent back in
     // the answerCallbackQuery
@@ -146,9 +149,12 @@ public class TelegramHandler extends BaseThingHandler {
 
         botLibClient = new OkHttpClient.Builder().connectTimeout(75, TimeUnit.SECONDS).readTimeout(75, TimeUnit.SECONDS)
                 .build();
-        updateStatus(ThingStatus.ONLINE);
+        updateStatus(ThingStatus.UNKNOWN);
+        startThingUpdateJob();
         TelegramBot localBot = bot = new TelegramBot.Builder(botToken).okHttpClient(botLibClient).build();
         localBot.setUpdatesListener(updates -> {
+            cancelThingUpdateJob();
+            updateStatus(ThingStatus.ONLINE);
             for (Update update : updates) {
                 String lastMessageText = null;
                 Integer lastMessageDate = null;
@@ -213,22 +219,46 @@ public class TelegramHandler extends BaseThingHandler {
             return UpdatesListener.CONFIRMED_UPDATES_ALL;
         }, exception -> {
             if (exception != null) {
-                logger.warn("Telegram exception: {}", exception.getMessage());
                 if (exception.response() != null) {
                     BaseResponse localResponse = exception.response();
                     if (localResponse.errorCode() == 401) {
-                        logger.error("Bot token invalid, disable thing {}", getThing().getUID());
+                        cancelThingUpdateJob();
                         localBot.removeGetUpdatesListener();
-                        updateStatus(ThingStatus.OFFLINE);
+                        updateStatus(ThingStatus.OFFLINE, ThingStatusDetail.CONFIGURATION_ERROR,
+                                "Unauthorized attempt to connect to the Telegram server, please check if the bot token is valid");
+                        return;
                     }
                 }
+                if (exception.getCause() != null) // IOException
+                {
+                    cancelThingUpdateJob();
+                    updateStatus(ThingStatus.OFFLINE, ThingStatusDetail.COMMUNICATION_ERROR, exception.getMessage());
+                    startThingUpdateJob();
+                    return;
+                }
+                logger.warn("Telegram exception: {}", exception.getMessage());
             }
         });
+    }
+
+    private synchronized void startThingUpdateJob() {
+        thingStatusUpdateJob = scheduler.schedule(() -> {
+            // if no error was returned after 10s, we assume the initialization went well
+            updateStatus(ThingStatus.ONLINE);
+        }, 10, TimeUnit.SECONDS);
+    }
+
+    private synchronized void cancelThingUpdateJob() {
+        if (thingStatusUpdateJob != null) {
+            thingStatusUpdateJob.cancel(true);
+            thingStatusUpdateJob = null;
+        }
     }
 
     @Override
     public void dispose() {
         logger.debug("Trying to dispose Telegram client");
+        cancelThingUpdateJob();
         OkHttpClient localClient = botLibClient;
         TelegramBot localBot = bot;
         if (localClient != null && localBot != null) {
