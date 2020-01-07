@@ -21,10 +21,7 @@ import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Paths;
-import java.util.Arrays;
 import java.util.Base64;
-import java.util.Collections;
-import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -167,7 +164,7 @@ public class TelegramActions implements ThingActions {
     @RuleAction(label = "Telegram message", description = "Sends a Telegram via Telegram API")
     public boolean sendTelegram(@ActionInput(name = "chatId") @Nullable Long chatId,
             @ActionInput(name = "message") @Nullable String message) {
-        return sendTelegramGeneral(chatId, message, null, null);
+        return sendTelegramGeneral(chatId, message, (String) null);
     }
 
     @RuleAction(label = "Telegram message", description = "Sends a Telegram via Telegram API")
@@ -187,9 +184,8 @@ public class TelegramActions implements ThingActions {
     public boolean sendTelegramQuery(@ActionInput(name = "chatId") @Nullable Long chatId,
             @ActionInput(name = "message") @Nullable String message,
             @ActionInput(name = "replyId") @Nullable String replyId,
-            @ActionInput(name = "buttons") @Nullable String ...  buttons) {
-        return sendTelegramGeneral(chatId, message, replyId,
-        buttons != null ? Collections.singletonList(Arrays.asList(buttons)) : null);
+            @ActionInput(name = "buttons") @Nullable String... buttons) {
+        return sendTelegramGeneral(chatId, message, replyId, buttons);
     }
 
     @RuleAction(label = "Telegram message", description = "Sends a Telegram via Telegram API")
@@ -207,29 +203,8 @@ public class TelegramActions implements ThingActions {
         return true;
     }
 
-    @RuleAction(label = "Telegram message", description = "Sends a Telegram via Telegram API")
-    private boolean sendTelegramQuery(@ActionInput(name = "chatId") @Nullable Long chatId, @Nullable String message,
-            @Nullable String replyId, @Nullable List<@Nullable List<@Nullable String>> buttons) {
-        return sendTelegramGeneral(chatId, message, replyId, buttons);
-    }
-
-    @RuleAction(label = "Telegram message", description = "Sends a Telegram via Telegram API")
-    public boolean sendTelegramQuery(@ActionInput(name = "message") @Nullable String message,
-            @ActionInput(name = "replyId") @Nullable String replyId,
-            @ActionInput(name = "buttons") @Nullable List<@Nullable List<@Nullable String>> buttons) {
-        TelegramHandler localHandler = handler;
-        if (localHandler != null) {
-            for (Long chatId : localHandler.getChatIds()) {
-                if (!sendTelegramQuery(chatId, message, replyId, buttons)) {
-                    return false;
-                }
-            }
-        }
-        return true;
-    }
-
     private boolean sendTelegramGeneral(@ActionInput(name = "chatId") @Nullable Long chatId, @Nullable String message,
-            @Nullable String replyId, @Nullable List<@Nullable List<@Nullable String>> buttons) {
+            @Nullable String replyId, @Nullable String... buttons) {
         if (message == null) {
             logger.warn("Message not defined; action skipped.");
             return false;
@@ -246,18 +221,12 @@ public class TelegramActions implements ThingActions {
             }
             if (replyId != null) {
                 if (!replyId.contains(" ")) {
-                    if (buttons != null && buttons.size() > 0) {
-                        InlineKeyboardButton[][] keyboard2D = new InlineKeyboardButton[buttons.size()][];
-                        for (int row = 0; row < buttons.size(); row++) {
-                            @Nullable
-                            List<@Nullable String> buttonRows = buttons.get(row);
-                            if (buttonRows != null) {
-                                keyboard2D[row] = new InlineKeyboardButton[buttonRows.size()];
-                                for (int col = 0; col < buttonRows.size(); col++) {
-                                    keyboard2D[row][col] = new InlineKeyboardButton(buttonRows.get(col))
-                                            .callbackData(replyId + " " + buttonRows.get(col));
-                                }
-                            }
+                    if (buttons.length > 0) {
+                        InlineKeyboardButton[][] keyboard2D = new InlineKeyboardButton[1][];
+                        InlineKeyboardButton[] keyboard = new InlineKeyboardButton[buttons.length];
+                        keyboard2D[0] = keyboard;
+                        for (int i = 0; i < buttons.length; i++) {
+                            keyboard[i] = new InlineKeyboardButton(buttons[i]).callbackData(replyId + " " + buttons[i]);
                         }
                         InlineKeyboardMarkup keyBoardMarkup = new InlineKeyboardMarkup(keyboard2D);
                         sendMessage.replyMarkup(keyBoardMarkup);
@@ -444,15 +413,6 @@ public class TelegramActions implements ThingActions {
         }
     }
 
-    public static boolean sendTelegramQuery(@Nullable ThingActions actions, @Nullable String message,
-            @Nullable String replyId, @Nullable List<@Nullable List<@Nullable String>> buttons) {
-        if (actions instanceof TelegramActions) {
-            return ((TelegramActions) actions).sendTelegramQuery(message, replyId, buttons);
-        } else {
-            throw new IllegalArgumentException("Instance is not a TelegramActions class.");
-        }
-    }
-
     public static boolean sendTelegramPhoto(@Nullable ThingActions actions, @Nullable String photoURL,
             @Nullable String caption) {
         if (actions instanceof TelegramActions) {
@@ -493,16 +453,6 @@ public class TelegramActions implements ThingActions {
 
     public static boolean sendTelegramQuery(@Nullable ThingActions actions, @Nullable Long chatId,
             @Nullable String message, @Nullable String replyId, @Nullable String... buttons) {
-        if (actions instanceof TelegramActions) {
-            return ((TelegramActions) actions).sendTelegramQuery(chatId, message, replyId, buttons);
-        } else {
-            throw new IllegalArgumentException("Instance is not a TelegramActions class.");
-        }
-    }
-
-    public static boolean sendTelegramQuery(@Nullable ThingActions actions, @Nullable Long chatId,
-            @Nullable String message, @Nullable String replyId,
-            @Nullable List<@Nullable List<@Nullable String>> buttons) {
         if (actions instanceof TelegramActions) {
             return ((TelegramActions) actions).sendTelegramQuery(chatId, message, replyId, buttons);
         } else {
